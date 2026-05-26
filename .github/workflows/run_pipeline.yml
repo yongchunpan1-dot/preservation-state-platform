@@ -56,6 +56,9 @@ jobs:
       - name: Generate experimental feedback template
         run: python src/08_generate_experimental_feedback_template.py
 
+      - name: Build unified master candidate report
+        run: python src/09_build_master_candidate_report.py
+
       - name: Upload generated outputs
         uses: actions/upload-artifact@v4
         with:
