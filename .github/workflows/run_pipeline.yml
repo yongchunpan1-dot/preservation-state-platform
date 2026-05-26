@@ -50,6 +50,12 @@ jobs:
       - name: Generate strategy-specific rankings
         run: python src/06_strategy_rank_outputs.py
 
+      - name: Generate experimental plan
+        run: python src/07_generate_experimental_plan.py
+
+      - name: Generate experimental feedback template
+        run: python src/08_generate_experimental_feedback_template.py
+
       - name: Upload generated outputs
         uses: actions/upload-artifact@v4
         with:
