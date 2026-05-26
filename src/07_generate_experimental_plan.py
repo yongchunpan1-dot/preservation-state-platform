@@ -7,9 +7,13 @@ OUT.mkdir(exist_ok=True)
 SAMPLE_TYPE = 'HRP_DNA_EV_spiked_serum'
 STORAGE_CONDITION = '37C_3_days'
 CORE_READOUTS = 'HRP_activity|PCR_amplifiability|NTA_particle_recovery'
-PER_STRATEGY_N = 6
-HYBRID_N = 8
-GLOBAL_TOP_N = 8
+
+# Science-level first-round design: broad, stratified, and mechanism-covering.
+# The final number may be lower after deduplication, but the target is ~80-120
+# unique formulations for Round 1.
+PER_STRATEGY_N = 18
+HYBRID_N = 24
+GLOBAL_TOP_N = 24
 
 STRATEGY_FILES = {
     'overall_top': 'top_ranked_experimental_candidates.csv',
@@ -70,6 +74,13 @@ def load_strategy_candidates():
     return pd.concat(rows, ignore_index=True)
 
 
+def assign_round_priority(row):
+    src = str(row.get('selection_source_strategy', ''))
+    if 'overall_top' in src or 'temporal_fidelity' in src or 'hybrid_entropy_architecture' in src:
+        return 'Round1_core'
+    return 'Round1_strategy_coverage'
+
+
 def main():
     candidates = load_strategy_candidates()
     candidates['material_key_for_dedup'] = candidates['materials'].apply(material_key)
@@ -87,6 +98,7 @@ def main():
         materials = row.get('materials', '')
         rows.append({
             'experiment_id': f'EXP1_{i+1:03d}',
+            'round_priority': assign_round_priority(row),
             'selection_source_strategy': row.get('selection_source_strategy', 'not_specified'),
             'formulation_id': row.get('formulation_id', f'FORM_{i+1:06d}'),
             'materials': materials,
@@ -108,7 +120,20 @@ def main():
 
     plan = pd.DataFrame(rows)
     plan.to_csv(OUT / 'experimental_plan_first_round.csv', index=False)
-    print(f'Generated stratified experimental_plan_first_round.csv with {len(plan)} unique formulations')
+
+    design_summary = pd.DataFrame([
+        {'parameter': 'target_round1_unique_formulations', 'value': '80-120'},
+        {'parameter': 'per_strategy_requested', 'value': PER_STRATEGY_N},
+        {'parameter': 'hybrid_requested', 'value': HYBRID_N},
+        {'parameter': 'overall_top_requested', 'value': GLOBAL_TOP_N},
+        {'parameter': 'actual_unique_formulations', 'value': len(plan)},
+        {'parameter': 'primary_readouts', 'value': CORE_READOUTS},
+        {'parameter': 'sample_model', 'value': SAMPLE_TYPE},
+        {'parameter': 'stress_condition', 'value': STORAGE_CONDITION},
+    ])
+    design_summary.to_csv(OUT / 'experimental_design_summary.csv', index=False)
+
+    print(f'Generated Science-level stratified experimental_plan_first_round.csv with {len(plan)} unique formulations')
 
 
 if __name__ == '__main__':
