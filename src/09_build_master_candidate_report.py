@@ -13,23 +13,28 @@ FILES = {
     'Recoverable Preservation': 'top_recoverable_preservation_candidates.csv',
     'Temporal Fidelity': 'top_temporal_fidelity_candidates.csv',
     'Hybrid Entropy Architectures': 'top_hybrid_entropy_architectures.csv',
+    'Experimental Plan': 'experimental_plan_first_round.csv',
+    'Feedback Template': 'experimental_feedback_template.csv',
 }
 
 
 def clean_df(df):
-    keep = [
-        c for c in [
-            'formulation_id',
-            'materials',
-            'component_classes',
-            'overall_feasibility_score',
-            'preservation_likelihood_prior',
-            'assay_compatibility_prior',
-            'cleanup_strategy',
-            'recoverability_score',
-        ] if c in df.columns
+    preferred = [
+        'formulation_id',
+        'materials',
+        'component_classes',
+        'overall_feasibility_score',
+        'preservation_likelihood_prior',
+        'assay_compatibility_prior',
+        'cleanup_strategy',
+        'recoverability_score',
+        'sample_type',
+        'storage_condition',
+        'required_readouts',
+        'cleanup_test_plan',
     ]
-    return df[keep].copy()
+    keep = [c for c in preferred if c in df.columns]
+    return df[keep].copy() if keep else df.copy()
 
 
 def main():
@@ -49,13 +54,32 @@ def main():
 
             summary_rows.append({
                 'section': sheet_name,
-                'file': filename,
-                'n_rows': len(df),
+                'rows': len(df),
             })
 
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name='Summary', index=False)
 
-    print(f'Generated unified report: {output_path}')
+    # Remove noisy intermediate CSVs from the user-facing output set.
+    removable = [
+        'top_entropy_suppression_candidates.csv',
+        'top_state_locking_candidates.csv',
+        'top_spatial_confinement_candidates.csv',
+        'top_molecular_mobility_suppression_candidates.csv',
+        'top_recoverable_preservation_candidates.csv',
+        'top_temporal_fidelity_candidates.csv',
+        'top_hybrid_entropy_architectures.csv',
+        'strategy_output_summary.csv',
+    ]
+
+    for fname in removable:
+        f = OUT / fname
+        if f.exists():
+            try:
+                f.unlink()
+            except Exception:
+                pass
+
+    print(f'Generated consolidated workbook: {output_path}')
 
 
 if __name__ == '__main__':
