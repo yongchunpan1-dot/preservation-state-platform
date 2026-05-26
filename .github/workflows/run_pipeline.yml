@@ -26,8 +26,17 @@ jobs:
           mkdir -p outputs
           mkdir -p models
 
+      - name: Build entropy operator ontology
+        run: python src/00_build_entropy_operator_ontology.py
+
       - name: Run evidence mining
         run: python src/01_build_evidence_table.py
+
+      - name: Build material operator mapping
+        run: python src/01b_build_material_operator_mapping.py
+
+      - name: Run mechanism-centric literature mining
+        run: python src/02b_mechanism_centric_literature_mining.py
 
       - name: Generate descriptors
         run: python src/03_compute_descriptors.py
@@ -37,6 +46,9 @@ jobs:
 
       - name: Build assay risk engine
         run: python src/05_build_assay_risk_engine.py
+
+      - name: Generate strategy-specific rankings
+        run: python src/06_strategy_rank_outputs.py
 
       - name: Upload generated outputs
         uses: actions/upload-artifact@v4
