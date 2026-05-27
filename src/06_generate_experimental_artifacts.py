@@ -50,11 +50,11 @@ def generate_feedback_template(df, source_file):
     out['storage_temperature'] = '37C'
     out['storage_duration'] = '3_days'
 
-    out['NTA_particle_count_recovery'] = ''
-    out['NTA_size_distribution_change'] = ''
-    out['HRP_activity_recovery'] = ''
-    out['PCR_or_qPCR_signal_recovery'] = ''
-    out['sample_cleanliness_or_usability'] = ''
+    # Minimal experimentally grounded preservation readouts.
+    out['NTA_particle_recovery_relative_to_control'] = ''
+    out['HRP_activity_percent_of_control'] = ''
+    out['PCR_or_qPCR_signal_relative_to_control'] = ''
+    out['sample_cleanliness'] = ''
     out['experimental_notes'] = ''
 
     out['source_candidate_table'] = source_file
@@ -65,6 +65,7 @@ def generate_feedback_template(df, source_file):
     )
 
     out.to_csv(OUTPUT_DIR / 'experimental_feedback_template.csv', index=False)
+
 
 
 def generate_design_summary(df, source_file):
@@ -142,19 +143,19 @@ def generate_design_summary(df, source_file):
         lines.append('- No explicit entropy-control module field detected.')
     lines.append('')
 
-    lines.append('## First-round experimental readouts')
+    lines.append('## First-round experimental feedback readouts')
     lines.append('')
-    lines.append('- NTA_particle_count_recovery: particle or EV-count recovery after storage')
-    lines.append('- NTA_size_distribution_change: membrane or particle-size stability by NTA')
-    lines.append('- HRP_activity_recovery: protein/enzyme functional retention using HRP activity')
-    lines.append('- PCR_or_qPCR_signal_recovery: nucleic-acid amplifiability by PCR or qPCR')
-    lines.append('- sample_cleanliness_or_usability: simple clean/usable/not-clean assessment after preservation and recovery')
+    lines.append('- NTA_particle_recovery_relative_to_control: overall EV or particle preservation relative to untreated control')
+    lines.append('- HRP_activity_percent_of_control: protein or enzyme functional retention relative to untreated control')
+    lines.append('- PCR_or_qPCR_signal_relative_to_control: nucleic-acid preservation relative to untreated control')
+    lines.append('- sample_cleanliness: simple clean/usable/precipitated assessment after preservation and recovery')
     lines.append('- experimental_notes')
 
     (OUTPUT_DIR / 'experimental_design_summary.md').write_text(
         '\n'.join(lines),
         encoding='utf-8'
     )
+
 
 
 def main():
