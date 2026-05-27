@@ -13,9 +13,6 @@ CONCENTRATION_LEVELS = [
     ('high', 1.0),
 ]
 
-# Temperature is a testing condition, not a formulation identity.
-# The virtual universe still records temperature variants for modeling,
-# but first-round experimental shortlists are deduplicated by materials.
 TEMPERATURE_STATES = ['4C', 'room_temperature', '37C']
 PHASE_STATES = ['solution', 'hydrogel', 'glass_state', 'mineralized_state']
 FIRST_ROUND_TEST_CONDITION = '37C_3_days'
@@ -41,6 +38,8 @@ STRATIFIED_SHORTLIST_TARGETS = {
     'hybrid_multi_module_formulations': 20,
 }
 
+MAX_PER_CANONICAL_SOURCE = 3
+
 
 def is_silica_source(name: str):
     lower = str(name).lower()
@@ -54,6 +53,19 @@ def canonical_material_identity(name: str):
     if lower == 'silica':
         return 'silica_final_product_reference'
     return lower.replace(' ', '_')
+
+
+def silica_source_state(name: str):
+    lower = str(name).lower()
+    if 'tmos' in lower or 'tetramethyl orthosilicate' in lower or 'teos' in lower:
+        return 'alkoxysilane_state'
+    if 'silicic acid' in lower or 'orthosilicic acid' in lower:
+        return 'silicic_acid_state'
+    if 'sodium silicate' in lower or ('silicate' in lower and 'silicic' not in lower):
+        return 'aqueous_silicate_state'
+    if lower.strip() == 'silica':
+        return 'condensed_silica_state'
+    return 'non_silica'
 
 
 def classify_material(name: str):
@@ -123,11 +135,50 @@ def make_canonical_source_key(materials):
     return '|'.join(sorted(canonical_material_identity(m) for m in materials))
 
 
+def select_diverse_rows(subset, target_n, module_name, global_seen):
+    selected = []
+    canonical_counts = {}
+    silica_state_counts = {}
+
+    for _, row in subset.iterrows():
+        key = row['canonical_source_key']
+
+        if key in global_seen:
+            continue
+
+        canonical_counts.setdefault(key, 0)
+        if canonical_counts[key] >= MAX_PER_CANONICAL_SOURCE:
+            continue
+
+        silica_state = row.get('silica_source_state_summary', 'non_silica')
+        silica_state_counts.setdefault(silica_state, 0)
+
+        if silica_state != 'non_silica' and silica_state_counts[silica_state] >= 3:
+            continue
+
+        selected.append(row)
+        global_seen.add(key)
+        canonical_counts[key] += 1
+
+        if silica_state != 'non_silica':
+            silica_state_counts[silica_state] += 1
+
+        if len(selected) >= target_n:
+            break
+
+    if not selected:
+        return None
+
+    frame = pd.DataFrame(selected).copy()
+    frame['shortlist_sampling_strategy'] = module_name
+    return frame
+
+
 def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
     shortlisted_frames = []
-    already_selected = set()
+    global_seen = set()
 
-    deduped = ranked_df.drop_duplicates(subset=['canonical_source_key']).copy()
+    deduped = ranked_df.drop_duplicates(subset=['material_key', 'phase_state']).copy()
 
     for module_name, target_n in STRATIFIED_SHORTLIST_TARGETS.items():
         if module_name == 'hybrid_multi_module_formulations':
@@ -148,19 +199,9 @@ def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
             ascending=False,
         )
 
-        selected_rows = []
-        for _, row in subset.iterrows():
-            key = row['canonical_source_key']
-            if key in already_selected:
-                continue
-            selected_rows.append(row)
-            already_selected.add(key)
-            if len(selected_rows) >= target_n:
-                break
+        frame = select_diverse_rows(subset, target_n, module_name, global_seen)
 
-        if selected_rows:
-            frame = pd.DataFrame(selected_rows).copy()
-            frame['shortlist_sampling_strategy'] = module_name
+        if frame is not None:
             shortlisted_frames.append(frame)
 
     if shortlisted_frames:
@@ -169,10 +210,7 @@ def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
         shortlist = deduped.head(total_target).copy()
         shortlist['shortlist_sampling_strategy'] = 'fallback_global_ranking'
 
-    shortlist = shortlist.sort_values(
-        ['preservation_likelihood_prior', 'assay_compatibility_prior'],
-        ascending=False,
-    ).head(total_target)
+    shortlist = shortlist.head(total_target)
 
     return shortlist
 
@@ -192,6 +230,8 @@ def main():
         for combo in combinations(materials, r):
             material_key = make_material_key(combo)
             canonical_source_key = make_canonical_source_key(combo)
+            silica_states = [silica_source_state(m) for m in combo]
+
             for temp in TEMPERATURE_STATES:
                 for phase in PHASE_STATES:
                     concentration_labels = [c[0] for c in CONCENTRATION_LEVELS[:r]]
@@ -249,6 +289,7 @@ def main():
                         'canonical_source_key': canonical_source_key,
                         'materials': '|'.join(combo),
                         'canonical_material_identities': '|'.join(canonical_material_identity(m) for m in combo),
+                        'silica_source_state_summary': '|'.join(sorted(set(silica_states))),
                         'num_components': r,
                         'component_classes': '|'.join(classes),
                         'entropy_control_modules': '|'.join(entropy_modules),
