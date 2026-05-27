@@ -33,8 +33,10 @@ TARGETS = [
 ]
 
 
-class MultiHeadPreservationNet(nn.Module):
+class MultiHeadPreservationNet(nn.Module if nn is not None else object):
     def __init__(self, input_dim, hidden_dim=128, dropout=0.15):
+        if nn is None:
+            raise ImportError('PyTorch is not installed.')
         super().__init__()
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), nn.ReLU(), nn.Dropout(dropout),
@@ -48,29 +50,35 @@ class MultiHeadPreservationNet(nn.Module):
 
 
 def load_features():
+    # Prefer the assay-scored candidate table when available because it already
+    # contains recoverability, assay-risk, and feasibility fields.
     for path in [
+        OUTPUT_DIR / 'formulation_assay_compatibility.csv',
+        OUTPUT_DIR / 'top_ranked_experimental_candidates.csv',
         OUTPUT_DIR / 'preservation_universe_virtual.csv',
         OUTPUT_DIR / 'preservation_universe_virtual.parquet',
         OUTPUT_DIR / 'descriptor_table.csv',
     ]:
         if path.exists() and path.suffix == '.csv':
-            return pd.read_csv(path)
+            return pd.read_csv(path), path.name
         if path.exists() and path.suffix == '.parquet':
-            return pd.read_parquet(path)
-    raise FileNotFoundError('Run descriptor/universe generation first.')
+            return pd.read_parquet(path), path.name
+    raise FileNotFoundError('Run descriptor/universe/assay-risk generation first.')
+
+
+def numeric_prior(df, col, default):
+    if col in df.columns:
+        return pd.to_numeric(df[col], errors='coerce').fillna(default).clip(0, 1)
+    return pd.Series(default, index=df.index, dtype=float)
 
 
 def add_mock_labels(df, seed=7):
     rng = np.random.default_rng(seed)
     out = df.copy()
-    def prior(col, default):
-        if col in out.columns:
-            return pd.to_numeric(out[col], errors='coerce').fillna(default).clip(0, 1)
-        return pd.Series(default, index=out.index)
-    p = prior('preservation_likelihood_prior', 0.55)
-    c = prior('assay_compatibility_prior', 0.50)
-    b = prior('cleanup_burden_prior', 0.45)
-    t = prior('regulatory_status_prior', 0.50)
+    p = numeric_prior(out, 'preservation_likelihood_prior', 0.55)
+    c = numeric_prior(out, 'assay_compatibility_prior', 0.50)
+    b = numeric_prior(out, 'cleanup_burden_prior', 0.45)
+    t = numeric_prior(out, 'regulatory_status_prior', 0.50)
     out['preservation_score'] = np.clip(p + rng.normal(0, 0.05, len(out)), 0, 1)
     out['assay_compatibility'] = np.clip(c - 0.25 * b + rng.normal(0, 0.05, len(out)), 0, 1)
     out['cleanup_burden'] = np.clip(b + rng.normal(0, 0.05, len(out)), 0, 1)
@@ -98,6 +106,8 @@ def train(df, epochs=50):
         raise ImportError('Install torch to run deep learning model.')
     labeled = add_mock_labels(df)
     X, y, prep, feature_cols = build_matrix(labeled)
+    if len(labeled) < 2:
+        raise ValueError('At least two rows are required for train/test split.')
     Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=7)
     model = MultiHeadPreservationNet(Xtr.shape[1])
     opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
@@ -120,12 +130,68 @@ def train(df, epochs=50):
     return model, prep, feature_cols, labeled, history
 
 
+def deterministic_recommendation(df, top_k=24, source_table='unknown'):
+    """Fallback recommendation scaffold for CI/artifact generation.
+
+    This keeps the GitHub Actions artifact pipeline reproducible without requiring
+    a heavyweight PyTorch install. The output is intentionally labeled as a
+    scaffold, not as a trained neural-network result.
+    """
+    out = df.copy()
+
+    preservation = numeric_prior(out, 'preservation_likelihood_prior', 0.55)
+    assay = numeric_prior(out, 'assay_compatibility_prior', 0.50)
+    cleanup = numeric_prior(out, 'cleanup_burden_prior', 0.45)
+    regulatory = numeric_prior(out, 'regulatory_status_prior', 0.50)
+    recoverability = numeric_prior(out, 'recoverability_score', 1 - cleanup)
+
+    pcr_risk = numeric_prior(out, 'PCR_risk_score', 0.10)
+    lcms_risk = numeric_prior(out, 'LCMS_risk_score', 0.10)
+    scrna_risk = numeric_prior(out, 'scRNAseq_risk_score', 0.10)
+    mean_assay_risk = (pcr_risk + lcms_risk + scrna_risk) / 3
+
+    if 'overall_feasibility_score' in out.columns:
+        base_score = pd.to_numeric(out['overall_feasibility_score'], errors='coerce').fillna(0)
+    else:
+        base_score = preservation + assay + recoverability - cleanup - mean_assay_risk
+
+    out['dl_predicted_preservation_score'] = preservation
+    out['dl_predicted_assay_compatibility'] = assay
+    out['dl_predicted_cleanup_burden'] = cleanup
+    out['dl_predicted_translation_priority'] = 0.6 * regulatory + 0.4 * assay
+    out['dl_acquisition_score'] = base_score + 0.25 * out['dl_predicted_translation_priority']
+    out['model_status'] = 'deterministic_scaffold_no_torch'
+    out['model_input_table'] = source_table
+    out['model_note'] = 'PyTorch was not available in this run; recommendations use deterministic prior-based scoring for artifact generation.'
+
+    out = out.sort_values('dl_acquisition_score', ascending=False).head(top_k)
+    out.to_csv(OUTPUT_DIR / 'deep_learning_recommended_formulations.csv', index=False)
+
+    metadata = {
+        'model_status': 'deterministic_scaffold_no_torch',
+        'source_table': source_table,
+        'top_k': top_k,
+        'note': 'Install torch or enable the PyTorch workflow path to train MultiHeadPreservationNet. Current artifact is a reproducible prior-based recommendation scaffold.',
+    }
+    (MODEL_DIR / 'deep_learning_model_metadata.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    pd.DataFrame([metadata]).to_csv(MODEL_DIR / 'deep_learning_training_history.csv', index=False)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--top-k', type=int, default=24)
+    parser.add_argument('--require-torch', action='store_true', help='Fail if PyTorch is unavailable instead of using deterministic fallback.')
     args = parser.parse_args()
-    df = load_features()
+
+    df, source_table = load_features()
+
+    if torch is None and not args.require_torch:
+        deterministic_recommendation(df, top_k=args.top_k, source_table=source_table)
+        print('Generated deep_learning_recommended_formulations.csv using deterministic scaffold fallback')
+        return
+
     model, prep, feature_cols, labeled, history = train(df, epochs=args.epochs)
     X = prep.transform(labeled[feature_cols])
     if hasattr(X, 'toarray'):
@@ -139,6 +205,8 @@ def main():
     out['dl_predicted_cleanup_burden'] = pred[:, 2]
     out['dl_predicted_translation_priority'] = pred[:, 3]
     out['dl_acquisition_score'] = out['dl_predicted_preservation_score'] + out['dl_predicted_assay_compatibility'] + out['dl_predicted_translation_priority'] - out['dl_predicted_cleanup_burden']
+    out['model_status'] = 'trained_pytorch_mock_label_scaffold'
+    out['model_input_table'] = source_table
     out.sort_values('dl_acquisition_score', ascending=False).head(args.top_k).to_csv(OUTPUT_DIR / 'deep_learning_recommended_formulations.csv', index=False)
     pd.DataFrame(history).to_csv(MODEL_DIR / 'deep_learning_training_history.csv', index=False)
     torch.save(model.state_dict(), MODEL_DIR / 'multi_head_preservation_net.pt')
