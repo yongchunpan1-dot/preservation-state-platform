@@ -32,6 +32,15 @@ SILICA_SOURCE_TERMS = [
     'teos',
 ]
 
+STRATIFIED_SHORTLIST_TARGETS = {
+    'molecular_mobility_suppression': 10,
+    'chemical_reaction_rate_suppression': 10,
+    'structural_state_locking': 10,
+    'mineralized_state_locking': 10,
+    'degradation_pathway_suppression_and_recoverability': 10,
+    'hybrid_multi_module_formulations': 20,
+}
+
 
 def is_silica_source(name: str):
     lower = str(name).lower()
@@ -39,12 +48,6 @@ def is_silica_source(name: str):
 
 
 def canonical_material_identity(name: str):
-    """Return a canonical identity for mechanism-level grouping.
-
-    TMOS, silicic/orthosilicic acid, and soluble silicates are different chemical
-    entities/states, but they belong to the same silica-generating source family
-    for preservation-state ontology and formulation-space grouping.
-    """
     lower = str(name).lower().strip()
     if is_silica_source(lower):
         return 'silica_source'
@@ -75,12 +78,6 @@ def classify_material(name: str):
 
 
 def entropy_control_module(material_class: str):
-    """Map materials to anti-entropy preservation modules.
-
-    The framework is organized around reducing entropy increase during storage:
-    molecular mobility, reaction rates, structural disorder, interfacial damage,
-    and irreversible information loss.
-    """
     mapping = {
         'vitrification_or_glass_forming': 'molecular_mobility_suppression',
         'mobility_suppression': 'molecular_mobility_suppression',
@@ -126,6 +123,60 @@ def make_canonical_source_key(materials):
     return '|'.join(sorted(canonical_material_identity(m) for m in materials))
 
 
+def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
+    shortlisted_frames = []
+    already_selected = set()
+
+    deduped = ranked_df.drop_duplicates(subset=['canonical_source_key']).copy()
+
+    for module_name, target_n in STRATIFIED_SHORTLIST_TARGETS.items():
+        if module_name == 'hybrid_multi_module_formulations':
+            subset = deduped[
+                deduped['entropy_control_modules']
+                .astype(str)
+                .apply(lambda x: len(set(x.split('|'))) >= 3)
+            ]
+        else:
+            subset = deduped[
+                deduped['entropy_control_modules']
+                .astype(str)
+                .str.contains(module_name, na=False)
+            ]
+
+        subset = subset.sort_values(
+            ['preservation_likelihood_prior', 'assay_compatibility_prior'],
+            ascending=False,
+        )
+
+        selected_rows = []
+        for _, row in subset.iterrows():
+            key = row['canonical_source_key']
+            if key in already_selected:
+                continue
+            selected_rows.append(row)
+            already_selected.add(key)
+            if len(selected_rows) >= target_n:
+                break
+
+        if selected_rows:
+            frame = pd.DataFrame(selected_rows).copy()
+            frame['shortlist_sampling_strategy'] = module_name
+            shortlisted_frames.append(frame)
+
+    if shortlisted_frames:
+        shortlist = pd.concat(shortlisted_frames, ignore_index=True)
+    else:
+        shortlist = deduped.head(total_target).copy()
+        shortlist['shortlist_sampling_strategy'] = 'fallback_global_ranking'
+
+    shortlist = shortlist.sort_values(
+        ['preservation_likelihood_prior', 'assay_compatibility_prior'],
+        ascending=False,
+    ).head(total_target)
+
+    return shortlist
+
+
 def main():
     descriptor_path = OUTPUT_DIR / 'descriptor_table.csv'
     if not descriptor_path.exists():
@@ -169,7 +220,6 @@ def main():
                     if 'recoverability_or_chelation' in classes:
                         assay_prior += 0.05
 
-                    # Reward orthogonal anti-entropy coverage: mobility + reaction + state-locking.
                     unique_entropy_modules = set(entropy_modules)
                     if len(unique_entropy_modules) >= 2:
                         preservation_prior += 0.04
@@ -203,7 +253,7 @@ def main():
                         'component_classes': '|'.join(classes),
                         'entropy_control_modules': '|'.join(entropy_modules),
                         'silica_source_roles': '|'.join(silica_roles),
-                        'contains_silica_source_family': any(canonical_material_identity(m) == 'silica_source' for m in combo),
+                        'contains_silica_source': any(canonical_material_identity(m) == 'silica_source' for m in combo),
                         'concentration_levels': '|'.join(concentration_labels),
                         'temperature_state': temp,
                         'phase_state': phase,
@@ -225,15 +275,11 @@ def main():
         ascending=False,
     )
 
-    # Deduplicate material combinations for experimental actionability.
-    # Temperature and phase variants are modeling states, not separate first-round formulations.
-    # Use canonical_source_key to prevent TMOS/silicic acid/sodium silicate from being treated
-    # as unrelated mechanism families when the goal is silica-source screening.
-    shortlist = ranked.drop_duplicates(subset=['canonical_source_key']).head(64)
+    shortlist = build_mechanism_stratified_shortlist(ranked, total_target=64)
     shortlist.to_csv(OUTPUT_DIR / 'recommended_first_round_formulations.csv', index=False)
 
     print(f'Generated {len(df)} virtual formulation states')
-    print(f'Generated {len(shortlist)} deduplicated first-round formulation candidates')
+    print(f'Generated {len(shortlist)} mechanism-stratified first-round candidates')
 
 
 if __name__ == '__main__':
