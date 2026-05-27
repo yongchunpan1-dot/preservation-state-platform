@@ -52,6 +52,25 @@ SEED_MATERIALS = [
     "glutathione", "ascorbic acid", "RNAlater", "PAXgene",
     "silica", "silicic acid", "orthosilicic acid", "sodium silicate",
     "tetramethyl orthosilicate", "TMOS", "calcium phosphate", "ZIF-8",
+
+    # Expanded osmolyte and compatible-solute modules
+    "arginine", "lysine", "glycine", "proline", "betaine",
+    "ectoine", "hydroxyectoine", "taurine",
+
+    # Expanded glass/matrix stabilizer modules
+    "raffinose", "pullulan", "polyvinylpyrrolidone",
+    "methylcellulose", "hydroxypropyl methylcellulose",
+
+    # Interface and colloidal stabilizer modules
+    "polysorbate 20", "polysorbate 80",
+    "albumin", "bovine serum albumin",
+
+    # Oxidative-stress suppression modules
+    "catalase", "superoxide dismutase",
+    "N-acetylcysteine", "tocopherol",
+
+    # Ionic-state modifiers
+    "magnesium chloride", "calcium chloride",
 ]
 
 PRESERVATION_CONTEXT = {
@@ -91,6 +110,39 @@ PRESERVATION_CONTEXT = {
     "TMOS": "hydrolyzable silica precursor for in situ silicification",
     "calcium phosphate": "biomineralization and mineral-shell candidate",
     "ZIF-8": "MOF biomineralization shell candidate",
+
+    # Expanded osmolyte and compatible-solute modules
+    "arginine": "protein aggregation-suppression excipient candidate",
+    "lysine": "amino-acid osmolyte and protein-stabilization candidate",
+    "glycine": "amino-acid osmolyte and buffer candidate",
+    "proline": "osmolyte and stress-protection amino acid candidate",
+    "betaine": "compatible osmolyte and protein stabilization candidate",
+    "ectoine": "compatible-solute osmolyte and stress-protection candidate",
+    "hydroxyectoine": "compatible-solute osmolyte and stress-protection candidate",
+    "taurine": "osmolyte and membrane-stress protection candidate",
+
+    # Expanded glass/matrix stabilizer modules
+    "raffinose": "oligosaccharide glass-forming stabilizer candidate",
+    "pullulan": "polysaccharide glass/matrix-forming stabilizer candidate",
+    "polyvinylpyrrolidone": "polymer excipient and matrix-forming stabilizer candidate",
+    "methylcellulose": "cellulose-derived matrix and viscosity-modulation candidate",
+    "hydroxypropyl methylcellulose": "matrix-forming cellulose derivative candidate",
+
+    # Interface and colloidal stabilizer modules
+    "polysorbate 20": "surfactant and interface stabilization excipient candidate",
+    "polysorbate 80": "surfactant and interface stabilization excipient candidate",
+    "albumin": "proteinaceous crowding and interface-protection excipient",
+    "bovine serum albumin": "proteinaceous crowding and interface-protection excipient",
+
+    # Oxidative-stress suppression modules
+    "catalase": "enzymatic oxidative-stress suppression candidate",
+    "superoxide dismutase": "enzymatic oxidative-stress suppression candidate",
+    "N-acetylcysteine": "thiol antioxidant and redox-control candidate",
+    "tocopherol": "lipid-phase antioxidant candidate",
+
+    # Ionic-state modifiers
+    "magnesium chloride": "ionic-state and enzyme-cofactor modulation candidate",
+    "calcium chloride": "ionic-state and matrix-crosslinking modulation candidate",
 }
 
 CURATED_LITERATURE = [
