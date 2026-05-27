@@ -30,7 +30,6 @@ def generate_feedback_template(df, source_file):
         'entropy_control_modules',
         'dominant_entropy_module',
         'shortlist_sampling_strategy',
-        'phase_state',
         'temperature_state',
         'first_round_test_condition',
         'preservation_likelihood_prior',
@@ -47,22 +46,18 @@ def generate_feedback_template(df, source_file):
     out.insert(1, 'first_round_candidate_index', range(1, len(out) + 1))
 
     out['tested_concentration'] = ''
-    out['sample_type'] = 'EV_protein_DNA_cell_or_plasma_sample'
+    out['sample_type'] = 'EV_protein_DNA_or_plasma_sample'
     out['storage_temperature'] = '37C'
     out['storage_duration'] = '3_days'
 
-    out['membrane_or_EV_integrity_score'] = ''
-    out['protein_activity_or_marker_recovery_score'] = ''
-    out['nucleic_acid_amplifiability_score'] = ''
-    out['cell_or_biomarker_state_score'] = ''
-
-    out['assay_interference_observed'] = ''
-    out['cleanup_recovery_observed'] = ''
-    out['visible_precipitate_or_gel'] = ''
+    out['NTA_particle_count_recovery'] = ''
+    out['NTA_size_distribution_change'] = ''
+    out['HRP_activity_recovery'] = ''
+    out['PCR_or_qPCR_signal_recovery'] = ''
+    out['sample_cleanliness_or_usability'] = ''
     out['experimental_notes'] = ''
 
     out['source_candidate_table'] = source_file
-
     out['template_consistency_note'] = (
         'This feedback template is generated directly from '
         'recommended_first_round_formulations.csv; rows should match '
@@ -70,7 +65,6 @@ def generate_feedback_template(df, source_file):
     )
 
     out.to_csv(OUTPUT_DIR / 'experimental_feedback_template.csv', index=False)
-
 
 
 def generate_design_summary(df, source_file):
@@ -148,22 +142,19 @@ def generate_design_summary(df, source_file):
         lines.append('- No explicit entropy-control module field detected.')
     lines.append('')
 
-    lines.append('## Feedback readouts')
+    lines.append('## First-round experimental readouts')
     lines.append('')
-    lines.append('- membrane_or_EV_integrity_score')
-    lines.append('- protein_activity_or_marker_recovery_score')
-    lines.append('- nucleic_acid_amplifiability_score')
-    lines.append('- cell_or_biomarker_state_score')
-    lines.append('- assay_interference_observed')
-    lines.append('- cleanup_recovery_observed')
-    lines.append('- visible_precipitate_or_gel')
+    lines.append('- NTA_particle_count_recovery: particle or EV-count recovery after storage')
+    lines.append('- NTA_size_distribution_change: membrane or particle-size stability by NTA')
+    lines.append('- HRP_activity_recovery: protein/enzyme functional retention using HRP activity')
+    lines.append('- PCR_or_qPCR_signal_recovery: nucleic-acid amplifiability by PCR or qPCR')
+    lines.append('- sample_cleanliness_or_usability: simple clean/usable/not-clean assessment after preservation and recovery')
     lines.append('- experimental_notes')
 
     (OUTPUT_DIR / 'experimental_design_summary.md').write_text(
         '\n'.join(lines),
         encoding='utf-8'
     )
-
 
 
 def main():
