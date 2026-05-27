@@ -104,6 +104,21 @@ def entropy_control_module(material_class: str):
     return mapping.get(material_class, 'unassigned_entropy_control_module')
 
 
+def dominant_module(entropy_modules):
+    modules = list(entropy_modules)
+    unique = list(dict.fromkeys(modules))
+
+    if len(unique) >= 3:
+        return 'hybrid_multi_module_formulations'
+
+    counts = {}
+    for module in modules:
+        counts[module] = counts.get(module, 0) + 1
+
+    ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    return ranked[0][0]
+
+
 def silica_source_role(name: str):
     lower = str(name).lower()
     if 'tetramethyl orthosilicate' in lower or 'tmos' in lower or 'teos' in lower:
@@ -181,18 +196,9 @@ def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
     deduped = ranked_df.drop_duplicates(subset=['material_key', 'phase_state']).copy()
 
     for module_name, target_n in STRATIFIED_SHORTLIST_TARGETS.items():
-        if module_name == 'hybrid_multi_module_formulations':
-            subset = deduped[
-                deduped['entropy_control_modules']
-                .astype(str)
-                .apply(lambda x: len(set(x.split('|'))) >= 3)
-            ]
-        else:
-            subset = deduped[
-                deduped['entropy_control_modules']
-                .astype(str)
-                .str.contains(module_name, na=False)
-            ]
+        subset = deduped[
+            deduped['dominant_entropy_module'] == module_name
+        ]
 
         subset = subset.sort_values(
             ['preservation_likelihood_prior', 'assay_compatibility_prior'],
@@ -243,6 +249,7 @@ def main():
                     classes = [classify_material(m) for m in combo]
                     entropy_modules = [entropy_control_module(c) for c in classes]
                     silica_roles = [silica_source_role(m) for m in combo]
+                    dominant_entropy = dominant_module(entropy_modules)
 
                     if any(c in classes for c in ['vitrification_or_glass_forming', 'mobility_suppression']):
                         preservation_prior += 0.15
@@ -293,6 +300,7 @@ def main():
                         'num_components': r,
                         'component_classes': '|'.join(classes),
                         'entropy_control_modules': '|'.join(entropy_modules),
+                        'dominant_entropy_module': dominant_entropy,
                         'silica_source_roles': '|'.join(silica_roles),
                         'contains_silica_source': any(canonical_material_identity(m) == 'silica_source' for m in combo),
                         'concentration_levels': '|'.join(concentration_labels),
@@ -320,7 +328,7 @@ def main():
     shortlist.to_csv(OUTPUT_DIR / 'recommended_first_round_formulations.csv', index=False)
 
     print(f'Generated {len(df)} virtual formulation states')
-    print(f'Generated {len(shortlist)} mechanism-stratified first-round candidates')
+    print(f'Generated {len(shortlist)} mechanism-centered first-round candidates')
 
 
 if __name__ == '__main__':
