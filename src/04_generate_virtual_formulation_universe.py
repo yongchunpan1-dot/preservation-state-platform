@@ -20,22 +20,92 @@ TEMPERATURE_STATES = ['4C', 'room_temperature', '37C']
 PHASE_STATES = ['solution', 'hydrogel', 'glass_state', 'mineralized_state']
 FIRST_ROUND_TEST_CONDITION = '37C_3_days'
 
+SILICA_SOURCE_TERMS = [
+    'silica-forming precursor',
+    'silica_forming_precursor',
+    'silicic acid',
+    'orthosilicic acid',
+    'silicate',
+    'sodium silicate',
+    'tetramethyl orthosilicate',
+    'tmos',
+    'teos',
+]
+
+
+def is_silica_source(name: str):
+    lower = str(name).lower()
+    return any(k in lower for k in SILICA_SOURCE_TERMS)
+
+
+def canonical_material_identity(name: str):
+    """Return a canonical identity for mechanism-level grouping.
+
+    TMOS, silicic/orthosilicic acid, and soluble silicates are different chemical
+    entities/states, but they belong to the same silica-generating source family
+    for preservation-state ontology and formulation-space grouping.
+    """
+    lower = str(name).lower().strip()
+    if is_silica_source(lower):
+        return 'silica_source'
+    if lower == 'silica':
+        return 'silica_final_product_reference'
+    return lower.replace(' ', '_')
+
 
 def classify_material(name: str):
-    lower = name.lower()
-    if any(k in lower for k in ['trehalose', 'sucrose', 'mannitol', 'sorbitol']):
-        return 'glass_former'
+    lower = str(name).lower()
+    if any(k in lower for k in ['trehalose', 'sucrose', 'mannitol', 'sorbitol', 'dextran']):
+        return 'vitrification_or_glass_forming'
     if any(k in lower for k in ['alginate', 'gelatin', 'hyaluronic']):
-        return 'state_locking_matrix'
+        return 'matrix_state_locking'
     if any(k in lower for k in ['edta', 'citrate']):
         return 'recoverability_or_chelation'
     if any(k in lower for k in ['glutathione', 'ascorbic']):
         return 'reaction_rate_suppression'
-    if any(k in lower for k in ['dmso', 'glycerol']):
+    if any(k in lower for k in ['dmso', 'glycerol', 'hydroxyethyl starch']):
         return 'mobility_suppression'
-    if any(k in lower for k in ['silica', 'silicic acid', 'orthosilicic', 'tmos', 'sodium silicate', 'zif', 'calcium phosphate']):
-        return 'state_locking_mineral'
+    if is_silica_source(lower):
+        return 'silica_source_mineralization'
+    if lower.strip() == 'silica':
+        return 'silica_final_product_reference'
+    if any(k in lower for k in ['zif', 'calcium phosphate']):
+        return 'non_silica_mineralization'
     return 'other'
+
+
+def entropy_control_module(material_class: str):
+    """Map materials to anti-entropy preservation modules.
+
+    The framework is organized around reducing entropy increase during storage:
+    molecular mobility, reaction rates, structural disorder, interfacial damage,
+    and irreversible information loss.
+    """
+    mapping = {
+        'vitrification_or_glass_forming': 'molecular_mobility_suppression',
+        'mobility_suppression': 'molecular_mobility_suppression',
+        'reaction_rate_suppression': 'chemical_reaction_rate_suppression',
+        'matrix_state_locking': 'structural_state_locking',
+        'silica_source_mineralization': 'mineralized_state_locking',
+        'silica_final_product_reference': 'mineralized_state_locking_reference',
+        'non_silica_mineralization': 'mineralized_state_locking',
+        'recoverability_or_chelation': 'degradation_pathway_suppression_and_recoverability',
+        'other': 'unassigned_entropy_control_module',
+    }
+    return mapping.get(material_class, 'unassigned_entropy_control_module')
+
+
+def silica_source_role(name: str):
+    lower = str(name).lower()
+    if 'tetramethyl orthosilicate' in lower or 'tmos' in lower or 'teos' in lower:
+        return 'hydrolyzable_alkoxysilane_silica_source'
+    if 'sodium silicate' in lower or ('silicate' in lower and 'silicic' not in lower):
+        return 'aqueous_silicate_silica_source'
+    if 'silicic acid' in lower or 'orthosilicic acid' in lower:
+        return 'monomeric_or_oligomeric_silicic_acid_source_state'
+    if lower.strip() == 'silica':
+        return 'condensed_silica_final_product_reference'
+    return 'not_applicable'
 
 
 def compatibility_penalty(materials):
@@ -43,11 +113,17 @@ def compatibility_penalty(materials):
     penalty = 0.0
     if 'edta' in mats and 'calcium' in mats:
         penalty += 0.4
+    if ('tmos' in mats or 'tetramethyl orthosilicate' in mats) and any(k in mats for k in ['enzyme', 'catalase']):
+        penalty += 0.15
     return penalty
 
 
 def make_material_key(materials):
     return '|'.join(sorted(materials))
+
+
+def make_canonical_source_key(materials):
+    return '|'.join(sorted(canonical_material_identity(m) for m in materials))
 
 
 def main():
@@ -64,6 +140,7 @@ def main():
     for r in [1, 2, 3]:
         for combo in combinations(materials, r):
             material_key = make_material_key(combo)
+            canonical_source_key = make_canonical_source_key(combo)
             for temp in TEMPERATURE_STATES:
                 for phase in PHASE_STATES:
                     concentration_labels = [c[0] for c in CONCENTRATION_LEVELS[:r]]
@@ -73,19 +150,31 @@ def main():
                     cleanup_prior = 0.35
 
                     classes = [classify_material(m) for m in combo]
+                    entropy_modules = [entropy_control_module(c) for c in classes]
+                    silica_roles = [silica_source_role(m) for m in combo]
 
-                    if 'glass_former' in classes or 'mobility_suppression' in classes:
+                    if any(c in classes for c in ['vitrification_or_glass_forming', 'mobility_suppression']):
                         preservation_prior += 0.15
                     if 'reaction_rate_suppression' in classes:
                         preservation_prior += 0.1
-                    if 'state_locking_matrix' in classes:
+                    if 'matrix_state_locking' in classes:
                         preservation_prior += 0.08
                         cleanup_prior += 0.08
-                    if 'state_locking_mineral' in classes:
+                    if 'silica_source_mineralization' in classes:
+                        preservation_prior += 0.13
+                        cleanup_prior += 0.18
+                    if 'non_silica_mineralization' in classes:
                         preservation_prior += 0.12
                         cleanup_prior += 0.2
                     if 'recoverability_or_chelation' in classes:
                         assay_prior += 0.05
+
+                    # Reward orthogonal anti-entropy coverage: mobility + reaction + state-locking.
+                    unique_entropy_modules = set(entropy_modules)
+                    if len(unique_entropy_modules) >= 2:
+                        preservation_prior += 0.04
+                    if len(unique_entropy_modules) >= 3:
+                        preservation_prior += 0.04
 
                     penalty = compatibility_penalty(combo)
                     assay_prior -= penalty
@@ -107,9 +196,14 @@ def main():
                     rows.append({
                         'formulation_id': f'FORM_{formulation_counter:06d}',
                         'material_key': material_key,
+                        'canonical_source_key': canonical_source_key,
                         'materials': '|'.join(combo),
+                        'canonical_material_identities': '|'.join(canonical_material_identity(m) for m in combo),
                         'num_components': r,
                         'component_classes': '|'.join(classes),
+                        'entropy_control_modules': '|'.join(entropy_modules),
+                        'silica_source_roles': '|'.join(silica_roles),
+                        'contains_silica_source_family': any(canonical_material_identity(m) == 'silica_source' for m in combo),
                         'concentration_levels': '|'.join(concentration_labels),
                         'temperature_state': temp,
                         'phase_state': phase,
@@ -133,7 +227,9 @@ def main():
 
     # Deduplicate material combinations for experimental actionability.
     # Temperature and phase variants are modeling states, not separate first-round formulations.
-    shortlist = ranked.drop_duplicates(subset=['material_key']).head(64)
+    # Use canonical_source_key to prevent TMOS/silicic acid/sodium silicate from being treated
+    # as unrelated mechanism families when the goal is silica-source screening.
+    shortlist = ranked.drop_duplicates(subset=['canonical_source_key']).head(64)
     shortlist.to_csv(OUTPUT_DIR / 'recommended_first_round_formulations.csv', index=False)
 
     print(f'Generated {len(df)} virtual formulation states')
