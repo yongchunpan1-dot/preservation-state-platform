@@ -14,7 +14,6 @@ CONCENTRATION_LEVELS = [
 ]
 
 TEMPERATURE_STATES = ['4C', 'room_temperature', '37C']
-PHASE_STATES = ['solution', 'hydrogel', 'glass_state', 'mineralized_state']
 FIRST_ROUND_TEST_CONDITION = '37C_3_days'
 
 SILICA_SOURCE_TERMS = [
@@ -39,6 +38,12 @@ STRATIFIED_SHORTLIST_TARGETS = {
 }
 
 MAX_PER_CANONICAL_SOURCE = 3
+INTERNAL_SILICA_COLUMNS = [
+    'canonical_material_identities',
+    'silica_source_state_summary',
+    'silica_source_roles',
+    'contains_silica_source',
+]
 
 
 def is_silica_source(name: str):
@@ -102,6 +107,27 @@ def entropy_control_module(material_class: str):
         'other': 'unassigned_entropy_control_module',
     }
     return mapping.get(material_class, 'unassigned_entropy_control_module')
+
+
+def infer_phase_state(classes, entropy_modules):
+    """Assign a realistic preservation phase from formulation chemistry.
+
+    Phase is not enumerated for every formulation. It is inferred from the
+    dominant preservation mechanism so the first-round shortlist remains
+    experimentally meaningful rather than a Cartesian product of artificial states.
+    """
+    class_set = set(classes)
+    module_set = set(entropy_modules)
+
+    if 'matrix_state_locking' in class_set:
+        return 'hydrogel_or_matrix_state'
+    if 'silica_source_mineralization' in class_set or 'non_silica_mineralization' in class_set:
+        return 'mineralized_state'
+    if 'vitrification_or_glass_forming' in class_set:
+        return 'glass_or_dry_state'
+    if 'molecular_mobility_suppression' in module_set:
+        return 'solution_or_viscous_state'
+    return 'solution_state'
 
 
 def dominant_module(entropy_modules):
@@ -193,12 +219,10 @@ def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
     shortlisted_frames = []
     global_seen = set()
 
-    deduped = ranked_df.drop_duplicates(subset=['material_key', 'phase_state']).copy()
+    deduped = ranked_df.drop_duplicates(subset=['material_key']).copy()
 
     for module_name, target_n in STRATIFIED_SHORTLIST_TARGETS.items():
-        subset = deduped[
-            deduped['dominant_entropy_module'] == module_name
-        ]
+        subset = deduped[deduped['dominant_entropy_module'] == module_name]
 
         subset = subset.sort_values(
             ['preservation_likelihood_prior', 'assay_compatibility_prior'],
@@ -217,8 +241,11 @@ def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
         shortlist['shortlist_sampling_strategy'] = 'fallback_global_ranking'
 
     shortlist = shortlist.head(total_target)
-
     return shortlist
+
+
+def hide_internal_silica_columns(df):
+    return df.drop(columns=[c for c in INTERNAL_SILICA_COLUMNS if c in df.columns])
 
 
 def main():
@@ -237,83 +264,78 @@ def main():
             material_key = make_material_key(combo)
             canonical_source_key = make_canonical_source_key(combo)
             silica_states = [silica_source_state(m) for m in combo]
+            concentration_labels = [c[0] for c in CONCENTRATION_LEVELS[:r]]
 
-            for temp in TEMPERATURE_STATES:
-                for phase in PHASE_STATES:
-                    concentration_labels = [c[0] for c in CONCENTRATION_LEVELS[:r]]
+            classes = [classify_material(m) for m in combo]
+            entropy_modules = [entropy_control_module(c) for c in classes]
+            silica_roles = [silica_source_role(m) for m in combo]
+            dominant_entropy = dominant_module(entropy_modules)
+            phase_state = infer_phase_state(classes, entropy_modules)
 
-                    preservation_prior = 0.45
-                    assay_prior = 0.5
-                    cleanup_prior = 0.35
+            preservation_prior = 0.45
+            assay_prior = 0.5
+            cleanup_prior = 0.35
 
-                    classes = [classify_material(m) for m in combo]
-                    entropy_modules = [entropy_control_module(c) for c in classes]
-                    silica_roles = [silica_source_role(m) for m in combo]
-                    dominant_entropy = dominant_module(entropy_modules)
+            if any(c in classes for c in ['vitrification_or_glass_forming', 'mobility_suppression']):
+                preservation_prior += 0.15
+            if 'reaction_rate_suppression' in classes:
+                preservation_prior += 0.1
+            if 'matrix_state_locking' in classes:
+                preservation_prior += 0.08
+                cleanup_prior += 0.08
+            if 'silica_source_mineralization' in classes:
+                preservation_prior += 0.13
+                cleanup_prior += 0.18
+            if 'non_silica_mineralization' in classes:
+                preservation_prior += 0.12
+                cleanup_prior += 0.2
+            if 'recoverability_or_chelation' in classes:
+                assay_prior += 0.05
 
-                    if any(c in classes for c in ['vitrification_or_glass_forming', 'mobility_suppression']):
-                        preservation_prior += 0.15
-                    if 'reaction_rate_suppression' in classes:
-                        preservation_prior += 0.1
-                    if 'matrix_state_locking' in classes:
-                        preservation_prior += 0.08
-                        cleanup_prior += 0.08
-                    if 'silica_source_mineralization' in classes:
-                        preservation_prior += 0.13
-                        cleanup_prior += 0.18
-                    if 'non_silica_mineralization' in classes:
-                        preservation_prior += 0.12
-                        cleanup_prior += 0.2
-                    if 'recoverability_or_chelation' in classes:
-                        assay_prior += 0.05
+            unique_entropy_modules = set(entropy_modules)
+            if len(unique_entropy_modules) >= 2:
+                preservation_prior += 0.04
+            if len(unique_entropy_modules) >= 3:
+                preservation_prior += 0.04
 
-                    unique_entropy_modules = set(entropy_modules)
-                    if len(unique_entropy_modules) >= 2:
-                        preservation_prior += 0.04
-                    if len(unique_entropy_modules) >= 3:
-                        preservation_prior += 0.04
+            penalty = compatibility_penalty(combo)
+            assay_prior -= penalty
 
-                    penalty = compatibility_penalty(combo)
-                    assay_prior -= penalty
+            if phase_state == 'glass_or_dry_state':
+                preservation_prior += 0.08
+            elif phase_state == 'hydrogel_or_matrix_state':
+                preservation_prior += 0.05
+                cleanup_prior += 0.08
+            elif phase_state == 'mineralized_state':
+                preservation_prior += 0.10
+                cleanup_prior += 0.18
 
-                    if phase == 'glass_state':
-                        preservation_prior += 0.1
-                    if phase == 'hydrogel':
-                        preservation_prior += 0.05
-                        cleanup_prior += 0.08
-                    if phase == 'mineralized_state':
-                        preservation_prior += 0.12
-                        cleanup_prior += 0.22
+            formulation_counter += 1
 
-                    if temp == '37C':
-                        preservation_prior -= 0.08
-
-                    formulation_counter += 1
-
-                    rows.append({
-                        'formulation_id': f'FORM_{formulation_counter:06d}',
-                        'material_key': material_key,
-                        'canonical_source_key': canonical_source_key,
-                        'materials': '|'.join(combo),
-                        'canonical_material_identities': '|'.join(canonical_material_identity(m) for m in combo),
-                        'silica_source_state_summary': '|'.join(sorted(set(silica_states))),
-                        'num_components': r,
-                        'component_classes': '|'.join(classes),
-                        'entropy_control_modules': '|'.join(entropy_modules),
-                        'dominant_entropy_module': dominant_entropy,
-                        'silica_source_roles': '|'.join(silica_roles),
-                        'contains_silica_source': any(canonical_material_identity(m) == 'silica_source' for m in combo),
-                        'concentration_levels': '|'.join(concentration_labels),
-                        'temperature_state': temp,
-                        'phase_state': phase,
-                        'first_round_test_condition': FIRST_ROUND_TEST_CONDITION,
-                        'preservation_likelihood_prior': np.clip(preservation_prior, 0, 1),
-                        'assay_compatibility_prior': np.clip(assay_prior, 0, 1),
-                        'cleanup_burden_prior': np.clip(cleanup_prior, 0, 1),
-                        'regulatory_status_prior': 0.5,
-                        'interaction_penalty': penalty,
-                        'recommended_for_first_round': penalty < 0.35,
-                    })
+            rows.append({
+                'formulation_id': f'FORM_{formulation_counter:06d}',
+                'material_key': material_key,
+                'canonical_source_key': canonical_source_key,
+                'materials': '|'.join(combo),
+                'canonical_material_identities': '|'.join(canonical_material_identity(m) for m in combo),
+                'silica_source_state_summary': '|'.join(sorted(set(silica_states))),
+                'num_components': r,
+                'component_classes': '|'.join(classes),
+                'entropy_control_modules': '|'.join(entropy_modules),
+                'dominant_entropy_module': dominant_entropy,
+                'silica_source_roles': '|'.join(silica_roles),
+                'contains_silica_source': any(canonical_material_identity(m) == 'silica_source' for m in combo),
+                'concentration_levels': '|'.join(concentration_labels),
+                'temperature_state': '37C',
+                'phase_state': phase_state,
+                'first_round_test_condition': FIRST_ROUND_TEST_CONDITION,
+                'preservation_likelihood_prior': np.clip(preservation_prior - 0.08, 0, 1),
+                'assay_compatibility_prior': np.clip(assay_prior, 0, 1),
+                'cleanup_burden_prior': np.clip(cleanup_prior, 0, 1),
+                'regulatory_status_prior': 0.5,
+                'interaction_penalty': penalty,
+                'recommended_for_first_round': penalty < 0.35,
+            })
 
     df = pd.DataFrame(rows)
     df.to_csv(OUTPUT_DIR / 'preservation_universe_virtual.csv', index=False)
@@ -324,7 +346,10 @@ def main():
         ascending=False,
     )
 
-    shortlist = build_mechanism_stratified_shortlist(ranked, total_target=64)
+    shortlist_internal = build_mechanism_stratified_shortlist(ranked, total_target=64)
+    shortlist_internal.to_csv(OUTPUT_DIR / 'recommended_first_round_formulations_internal_metadata.csv', index=False)
+
+    shortlist = hide_internal_silica_columns(shortlist_internal)
     shortlist.to_csv(OUTPUT_DIR / 'recommended_first_round_formulations.csv', index=False)
 
     print(f'Generated {len(df)} virtual formulation states')
