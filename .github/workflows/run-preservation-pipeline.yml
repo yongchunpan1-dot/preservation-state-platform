@@ -57,6 +57,14 @@ jobs:
             echo "Skipping deep-learning scaffold: script not found."
           fi
 
+      - name: Generate experimental artifacts
+        run: |
+          if [ -f src/06_generate_experimental_artifacts.py ]; then
+            python src/06_generate_experimental_artifacts.py
+          else
+            echo "Skipping experimental artifact generation: script not found."
+          fi
+
       - name: List generated outputs
         run: |
           echo "Generated output files:"
