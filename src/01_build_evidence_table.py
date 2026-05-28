@@ -50,26 +50,15 @@ SEED_MATERIALS = [
     "dimethyl sulfoxide", "glyoxal", "formaldehyde", "methanol", "ethanol",
     "EDTA", "citrate", "histidine", "HEPES", "phosphate", "sodium chloride",
     "glutathione", "ascorbic acid", "RNAlater", "PAXgene",
-    "silica", "silicic acid", "orthosilicic acid", "sodium silicate",
-    "tetramethyl orthosilicate", "TMOS", "calcium phosphate", "ZIF-8",
-
-    # Expanded osmolyte and compatible-solute modules
+    "silica", "silicic acid", "calcium phosphate", "ZIF-8",
     "arginine", "lysine", "glycine", "proline", "betaine",
     "ectoine", "hydroxyectoine", "taurine",
-
-    # Expanded glass/matrix stabilizer modules
     "raffinose", "pullulan", "polyvinylpyrrolidone",
     "methylcellulose", "hydroxypropyl methylcellulose",
-
-    # Interface and colloidal stabilizer modules
     "polysorbate 20", "polysorbate 80",
     "albumin", "bovine serum albumin",
-
-    # Oxidative-stress suppression modules
     "catalase", "superoxide dismutase",
     "N-acetylcysteine", "tocopherol",
-
-    # Ionic-state modifiers
     "magnesium chloride", "calcium chloride",
 ]
 
@@ -102,16 +91,10 @@ PRESERVATION_CONTEXT = {
     "ascorbic acid": "antioxidant module",
     "RNAlater": "commercial RNA stabilization system",
     "PAXgene": "commercial molecular preservation system",
-    "silica": "mineralization/silicification shell candidate",
-    "silicic acid": "monomeric/oligomeric silicate precursor for biomimetic silicification and preservation-state locking",
-    "orthosilicic acid": "silicate precursor for mild aqueous silicification",
-    "sodium silicate": "aqueous silicate precursor for silica condensation/mineralization",
-    "tetramethyl orthosilicate": "hydrolyzable silica precursor for in situ silicification",
-    "TMOS": "hydrolyzable silica precursor for in situ silicification",
+    "silica": "condensed silica final-product reference state",
+    "silicic acid": "silica-forming preservation chemistry module",
     "calcium phosphate": "biomineralization and mineral-shell candidate",
     "ZIF-8": "MOF biomineralization shell candidate",
-
-    # Expanded osmolyte and compatible-solute modules
     "arginine": "protein aggregation-suppression excipient candidate",
     "lysine": "amino-acid osmolyte and protein-stabilization candidate",
     "glycine": "amino-acid osmolyte and buffer candidate",
@@ -120,27 +103,19 @@ PRESERVATION_CONTEXT = {
     "ectoine": "compatible-solute osmolyte and stress-protection candidate",
     "hydroxyectoine": "compatible-solute osmolyte and stress-protection candidate",
     "taurine": "osmolyte and membrane-stress protection candidate",
-
-    # Expanded glass/matrix stabilizer modules
     "raffinose": "oligosaccharide glass-forming stabilizer candidate",
     "pullulan": "polysaccharide glass/matrix-forming stabilizer candidate",
     "polyvinylpyrrolidone": "polymer excipient and matrix-forming stabilizer candidate",
     "methylcellulose": "cellulose-derived matrix and viscosity-modulation candidate",
     "hydroxypropyl methylcellulose": "matrix-forming cellulose derivative candidate",
-
-    # Interface and colloidal stabilizer modules
     "polysorbate 20": "surfactant and interface stabilization excipient candidate",
     "polysorbate 80": "surfactant and interface stabilization excipient candidate",
     "albumin": "proteinaceous crowding and interface-protection excipient",
     "bovine serum albumin": "proteinaceous crowding and interface-protection excipient",
-
-    # Oxidative-stress suppression modules
     "catalase": "enzymatic oxidative-stress suppression candidate",
     "superoxide dismutase": "enzymatic oxidative-stress suppression candidate",
     "N-acetylcysteine": "thiol antioxidant and redox-control candidate",
     "tocopherol": "lipid-phase antioxidant candidate",
-
-    # Ionic-state modifiers
     "magnesium chloride": "ionic-state and enzyme-cofactor modulation candidate",
     "calcium chloride": "ionic-state and matrix-crosslinking modulation candidate",
 }
@@ -148,27 +123,27 @@ PRESERVATION_CONTEXT = {
 CURATED_LITERATURE = [
     {
         "material_name": "silicic acid",
-        "synonym": "orthosilicic acid / soluble silicate",
+        "synonym": "silicic acid",
         "source_database": "ACS Nano DOI",
         "source_url_or_reference": "https://pubs.acs.org/doi/10.1021/acsnano.1c08103",
-        "evidence_statement": "User-identified high-priority silicification preservation paper; add to silicate preservation module for manual extraction of mechanism and assay data.",
-        "preservation_relevance": "supports prioritization of soluble silicate/silicic-acid chemistry for biomolecular or cellular preservation-state engineering",
+        "evidence_statement": "High-priority silicic-acid preservation evidence; add to silica-forming preservation module for manual extraction of mechanism and assay data.",
+        "preservation_relevance": "supports silicic-acid chemistry for biomolecular or cellular preservation-state engineering",
     },
     {
         "material_name": "silicic acid",
-        "synonym": "silicate preservation chemistry",
+        "synonym": "silicic acid",
         "source_database": "PNAS DOI",
         "source_url_or_reference": "https://www.pnas.org/doi/10.1073/pnas.2322418121",
-        "evidence_statement": "User-identified PNAS silicate-related preservation paper; add as high-priority curated evidence pending full text extraction.",
-        "preservation_relevance": "supports evaluating silicate chemistry as a strong preservation-state module",
+        "evidence_statement": "High-priority silicic-acid preservation evidence; add as curated evidence pending full-text extraction.",
+        "preservation_relevance": "supports evaluating silicic-acid chemistry as a strong preservation-state module",
     },
     {
         "material_name": "silicic acid",
-        "synonym": "silicate preservation chemistry",
+        "synonym": "silicic acid",
         "source_database": "PNAS DOI",
         "source_url_or_reference": "https://www.pnas.org/doi/full/10.1073/pnas.2408273121",
-        "evidence_statement": "User-identified PNAS silicate-related preservation paper; add as high-priority curated evidence pending full text extraction.",
-        "preservation_relevance": "supports evaluating silicate chemistry as a strong preservation-state module",
+        "evidence_statement": "High-priority silicic-acid preservation evidence; add as curated evidence pending full-text extraction.",
+        "preservation_relevance": "supports evaluating silicic-acid chemistry as a strong preservation-state module",
     },
 ]
 
@@ -304,7 +279,7 @@ def build_commercial_preservation_records() -> list[EvidenceRecord]:
 
 
 def build_curated_literature_records() -> list[EvidenceRecord]:
-    return [EvidenceRecord(item["material_name"], item["synonym"], "curated_literature", item["source_database"], item["source_url_or_reference"], item["evidence_statement"], item["preservation_relevance"], "assay compatibility and cleanup burden must be extracted from full text and encoded separately", "not a regulatory assertion", "L3_user_curated_high_priority_literature", "high-priority silicate/silicic-acid module; pending structured extraction") for item in CURATED_LITERATURE]
+    return [EvidenceRecord(item["material_name"], item["synonym"], "curated_literature", item["source_database"], item["source_url_or_reference"], item["evidence_statement"], item["preservation_relevance"], "assay compatibility and cleanup burden must be extracted from full text and encoded separately", "not a regulatory assertion", "L3_user_curated_high_priority_literature", "high-priority silicic-acid module; pending structured extraction") for item in CURATED_LITERATURE]
 
 
 def build_evidence_table(iid_file: Optional[str] = None) -> pd.DataFrame:
