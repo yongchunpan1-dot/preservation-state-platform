@@ -17,24 +17,16 @@ TEMPERATURE_STATES = ['4C', 'room_temperature', '37C']
 FIRST_ROUND_TEST_CONDITION = '37C_3_days'
 
 SILICA_SOURCE_TERMS = [
-    'silica-forming precursor',
-    'silica_forming_precursor',
     'silicic acid',
-    'orthosilicic acid',
-    'silicate',
-    'sodium silicate',
-    'tetramethyl orthosilicate',
-    'tmos',
-    'teos',
 ]
 
 STRATIFIED_SHORTLIST_TARGETS = {
-    'molecular_mobility_suppression': 10,
-    'chemical_reaction_rate_suppression': 10,
-    'structural_state_locking': 10,
-    'mineralized_state_locking': 10,
-    'degradation_pathway_suppression_and_recoverability': 10,
-    'hybrid_multi_module_formulations': 20,
+    'molecular_mobility_suppression': 14,
+    'chemical_reaction_rate_suppression': 14,
+    'structural_state_locking': 14,
+    'mineralized_state_locking': 14,
+    'degradation_pathway_suppression_and_recoverability': 14,
+    'hybrid_multi_module_formulations': 26,
 }
 
 MAX_PER_CANONICAL_SOURCE = 3
@@ -54,7 +46,7 @@ def is_silica_source(name: str):
 def canonical_material_identity(name: str):
     lower = str(name).lower().strip()
     if is_silica_source(lower):
-        return 'silica_source'
+        return 'silicic_acid'
     if lower == 'silica':
         return 'silica_final_product_reference'
     return lower.replace(' ', '_')
@@ -62,12 +54,8 @@ def canonical_material_identity(name: str):
 
 def silica_source_state(name: str):
     lower = str(name).lower()
-    if 'tmos' in lower or 'tetramethyl orthosilicate' in lower or 'teos' in lower:
-        return 'alkoxysilane_state'
-    if 'silicic acid' in lower or 'orthosilicic acid' in lower:
-        return 'silicic_acid_state'
-    if 'sodium silicate' in lower or ('silicate' in lower and 'silicic' not in lower):
-        return 'aqueous_silicate_state'
+    if 'silicic acid' in lower:
+        return 'silicic_acid'
     if lower.strip() == 'silica':
         return 'condensed_silica_state'
     return 'non_silica'
@@ -75,15 +63,15 @@ def silica_source_state(name: str):
 
 def classify_material(name: str):
     lower = str(name).lower()
-    if any(k in lower for k in ['trehalose', 'sucrose', 'mannitol', 'sorbitol', 'dextran']):
+    if any(k in lower for k in ['trehalose', 'sucrose', 'mannitol', 'sorbitol', 'dextran', 'raffinose', 'pullulan']):
         return 'vitrification_or_glass_forming'
-    if any(k in lower for k in ['alginate', 'gelatin', 'hyaluronic']):
+    if any(k in lower for k in ['alginate', 'gelatin', 'hyaluronic', 'methylcellulose', 'polyvinylpyrrolidone']):
         return 'matrix_state_locking'
     if any(k in lower for k in ['edta', 'citrate']):
         return 'recoverability_or_chelation'
-    if any(k in lower for k in ['glutathione', 'ascorbic']):
+    if any(k in lower for k in ['glutathione', 'ascorbic', 'catalase', 'superoxide dismutase', 'n-acetylcysteine', 'tocopherol']):
         return 'reaction_rate_suppression'
-    if any(k in lower for k in ['dmso', 'glycerol', 'hydroxyethyl starch']):
+    if any(k in lower for k in ['dmso', 'dimethyl sulfoxide', 'glycerol', 'hydroxyethyl starch', 'ectoine', 'hydroxyectoine', 'betaine', 'proline', 'glycine', 'taurine', 'arginine', 'lysine']):
         return 'mobility_suppression'
     if is_silica_source(lower):
         return 'silica_source_mineralization'
@@ -110,12 +98,6 @@ def entropy_control_module(material_class: str):
 
 
 def infer_phase_state(classes, entropy_modules):
-    """Assign a realistic preservation phase from formulation chemistry.
-
-    Phase is not enumerated for every formulation. It is inferred from the
-    dominant preservation mechanism so the first-round shortlist remains
-    experimentally meaningful rather than a Cartesian product of artificial states.
-    """
     class_set = set(classes)
     module_set = set(entropy_modules)
 
@@ -147,12 +129,8 @@ def dominant_module(entropy_modules):
 
 def silica_source_role(name: str):
     lower = str(name).lower()
-    if 'tetramethyl orthosilicate' in lower or 'tmos' in lower or 'teos' in lower:
-        return 'hydrolyzable_alkoxysilane_silica_source'
-    if 'sodium silicate' in lower or ('silicate' in lower and 'silicic' not in lower):
-        return 'aqueous_silicate_silica_source'
-    if 'silicic acid' in lower or 'orthosilicic acid' in lower:
-        return 'monomeric_or_oligomeric_silicic_acid_source_state'
+    if 'silicic acid' in lower:
+        return 'silicic_acid'
     if lower.strip() == 'silica':
         return 'condensed_silica_final_product_reference'
     return 'not_applicable'
@@ -163,8 +141,6 @@ def compatibility_penalty(materials):
     penalty = 0.0
     if 'edta' in mats and 'calcium' in mats:
         penalty += 0.4
-    if ('tmos' in mats or 'tetramethyl orthosilicate' in mats) and any(k in mats for k in ['enzyme', 'catalase']):
-        penalty += 0.15
     return penalty
 
 
@@ -215,7 +191,7 @@ def select_diverse_rows(subset, target_n, module_name, global_seen):
     return frame
 
 
-def build_mechanism_stratified_shortlist(ranked_df, total_target=64):
+def build_mechanism_stratified_shortlist(ranked_df, total_target=96):
     shortlisted_frames = []
     global_seen = set()
 
@@ -324,7 +300,7 @@ def main():
                 'entropy_control_modules': '|'.join(entropy_modules),
                 'dominant_entropy_module': dominant_entropy,
                 'silica_source_roles': '|'.join(silica_roles),
-                'contains_silica_source': any(canonical_material_identity(m) == 'silica_source' for m in combo),
+                'contains_silica_source': any(canonical_material_identity(m) == 'silicic_acid' for m in combo),
                 'concentration_levels': '|'.join(concentration_labels),
                 'temperature_state': '37C',
                 'phase_state': phase_state,
@@ -346,7 +322,7 @@ def main():
         ascending=False,
     )
 
-    shortlist_internal = build_mechanism_stratified_shortlist(ranked, total_target=64)
+    shortlist_internal = build_mechanism_stratified_shortlist(ranked, total_target=96)
     shortlist_internal.to_csv(OUTPUT_DIR / 'recommended_first_round_formulations_internal_metadata.csv', index=False)
 
     shortlist = hide_internal_silica_columns(shortlist_internal)
