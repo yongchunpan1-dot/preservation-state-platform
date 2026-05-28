@@ -6,7 +6,7 @@ OUTPUT_DIR = Path('outputs')
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 FIRST_ROUND_SHORTLIST = 'recommended_first_round_formulations.csv'
-EXPECTED_FIRST_ROUND_N = 64
+EXPECTED_FIRST_ROUND_N = 96
 
 
 def load_candidate_table():
@@ -65,7 +65,6 @@ def generate_feedback_template(df, source_file):
     )
 
     out.to_csv(OUTPUT_DIR / 'experimental_feedback_template.csv', index=False)
-
 
 
 def generate_design_summary(df, source_file):
@@ -155,7 +154,6 @@ def generate_design_summary(df, source_file):
         '\n'.join(lines),
         encoding='utf-8'
     )
-
 
 
 def main():
